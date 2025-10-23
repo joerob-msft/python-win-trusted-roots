@@ -111,4 +111,23 @@ jobs:
           app-name: 'joerob-python-webjob-win'
           slot-name: 'Production'
           package: ./app
+          clean: true
+      
+      - name: Restart App Service
+        run: |
+          Write-Host "Finding resource group for app..."
+          $rg = az webapp list --query "[?name=='joerob-python-webjob-win'].resourceGroup" -o tsv
+          if ($rg) {
+            Write-Host "Restarting App Service in resource group: $rg"
+            az webapp restart --name joerob-python-webjob-win --resource-group $rg
+            Write-Host "App Service restarted successfully"
+          } else {
+            Write-Host "Could not find resource group, skipping restart"
+          }
+      
+      - name: Verify deployment
+        run: |
+          Write-Host "Deployment completed. Verify at:"
+          Write-Host "  App: https://joerob-python-webjob-win.azurewebsites.net/Documentation"
+          Write-Host "  Kudu: https://joerob-python-webjob-win.scm.azurewebsites.net/DebugConsole"
           
