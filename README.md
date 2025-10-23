@@ -28,6 +28,7 @@ This application demonstrates the difference between SSL certificate validation 
 
 ```
 .
+├── SslCertTester.sln      # Solution file (enables build from root)
 ├── SslCertTester/          # .NET 8 Web Application
 │   ├── Controllers/        # API controllers
 │   ├── Models/            # Data models
@@ -89,6 +90,14 @@ Copy-Item -Path "WebJobs\SslTester\*" -Destination "SslCertTester\wwwroot\App_Da
 ```
 
 #### 4. Run the .NET Web Application
+
+From the repository root:
+
+```powershell
+dotnet run --project SslCertTester\SslCertTester.csproj
+```
+
+Or from the project directory:
 
 ```powershell
 cd SslCertTester
@@ -176,11 +185,29 @@ To check the LocalMachine certificate store, you may need to run PowerShell as A
 Get-ChildItem -Path Cert:\LocalMachine\Root
 ```
 
+## Building from Repository Root
+
+The repository includes a solution file (`SslCertTester.sln`) that allows building from the root directory. This is essential for CI/CD pipelines and automated deployments:
+
+```powershell
+# Build from root (Debug)
+dotnet build
+
+# Build for Release
+dotnet build --configuration Release
+
+# Run from root
+dotnet run --project SslCertTester\SslCertTester.csproj
+```
+
+**Why this matters**: GitHub Actions, Azure DevOps, and other CI/CD systems typically run builds from the repository root. The solution file ensures `dotnet build` works correctly without needing to specify a project path.
+
 ## Deployment to Azure
 
 ### Using Azure Developer CLI (Recommended)
 
 1. **Initialize azd environment**:
+
 ```powershell
 azd init
 ```
