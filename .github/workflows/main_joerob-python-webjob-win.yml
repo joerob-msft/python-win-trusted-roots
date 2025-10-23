@@ -104,14 +104,21 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_D411A9A6945C426198822DC436386DBA }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_FFDC0AB3F2C24A67B5124B92ED33DFFC }}
 
-      - name: Deploy to Azure Web App
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'joerob-python-webjob-win'
-          slot-name: 'Production'
-          package: ./app
-          clean: true
+      - name: Create deployment ZIP
+        run: |
+          Write-Host "Creating deployment ZIP..."
+          Compress-Archive -Path ./app/* -DestinationPath ./deploy.zip -Force
+          Write-Host "ZIP created: deploy.zip"
+          
+      - name: Deploy to Azure Web App via ZIP
+        run: |
+          Write-Host "Finding resource group..."
+          $rg = az webapp list --query "[?name=='joerob-python-webjob-win'].resourceGroup" -o tsv
+          Write-Host "Resource group: $rg"
+          
+          Write-Host "Deploying ZIP to Azure..."
+          az webapp deployment source config-zip --resource-group $rg --name joerob-python-webjob-win --src ./deploy.zip
+          Write-Host "Deployment completed"
       
       - name: Restart App Service
         run: |
