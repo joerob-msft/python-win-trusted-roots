@@ -27,13 +27,22 @@ jobs:
         run: dotnet build SslCertTester/SslCertTester.csproj --configuration Release
 
       - name: dotnet publish
-        run: dotnet publish SslCertTester/SslCertTester.csproj -c Release -o "${{env.DOTNET_ROOT}}/myapp"
+        run: dotnet publish SslCertTester/SslCertTester.csproj -c Release -o ./publish
+
+      - name: List publish contents (debug)
+        run: |
+          Write-Host "Contents of publish directory:"
+          Get-ChildItem -Path ./publish -Recurse -Depth 2 | Select-Object FullName
+          Write-Host "`nChecking for wwwroot:"
+          Test-Path ./publish/wwwroot
+          Write-Host "`nChecking for Bootstrap:"
+          Test-Path ./publish/wwwroot/lib/bootstrap
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: .net-app
-          path: ${{env.DOTNET_ROOT}}/myapp
+          path: ./publish/**
 
   deploy:
     runs-on: windows-latest
@@ -47,6 +56,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: .net-app
+          path: ./app
+      
+      - name: Debug downloaded artifact
+        run: |
+          Write-Host "Contents of downloaded artifact:"
+          Get-ChildItem -Path ./app -Recurse -Depth 2 | Select-Object FullName
       
       - name: Login to Azure
         uses: azure/login@v2
@@ -61,5 +76,5 @@ jobs:
         with:
           app-name: 'joerob-python-webjob-win'
           slot-name: 'Production'
-          package: .
+          package: ./app
           
