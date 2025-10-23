@@ -42,12 +42,35 @@ jobs:
         run: |
           # Create a deployment folder with the correct structure
           New-Item -ItemType Directory -Path ./deploy -Force
-          # Copy all files from publish EXCEPT wwwroot
-          Get-ChildItem -Path ./publish -Exclude wwwroot | Copy-Item -Destination ./deploy -Recurse -Force
-          # Copy wwwroot CONTENTS (not the folder itself) to deploy root
-          Get-ChildItem -Path ./publish/wwwroot | Copy-Item -Destination ./deploy -Recurse -Force
-          Write-Host "`nDeployment package structure:"
-          Get-ChildItem -Path ./deploy -Recurse -Depth 2 | Select-Object FullName
+          
+          Write-Host "Source publish structure:"
+          Get-ChildItem -Path ./publish -Recurse -Depth 2
+          
+          # Copy all files and folders from publish to deploy
+          Copy-Item -Path ./publish/* -Destination ./deploy -Recurse -Force
+          
+          # If wwwroot exists in deploy, flatten it
+          if (Test-Path ./deploy/wwwroot) {
+            Write-Host "`nFlattening wwwroot..."
+            # Move wwwroot contents to deploy root
+            Get-ChildItem -Path ./deploy/wwwroot -Force | ForEach-Object {
+              $dest = Join-Path ./deploy $_.Name
+              if (Test-Path $dest) {
+                Write-Host "Merging $($_.Name)..."
+                Copy-Item -Path $_.FullName -Destination $dest -Recurse -Force
+              } else {
+                Write-Host "Moving $($_.Name)..."
+                Move-Item -Path $_.FullName -Destination ./deploy -Force
+              }
+            }
+            # Remove empty wwwroot folder
+            Remove-Item -Path ./deploy/wwwroot -Force
+          }
+          
+          Write-Host "`nFinal deployment package structure:"
+          Get-ChildItem -Path ./deploy -Recurse -Depth 2
+          Write-Host "`nChecking for lib/bootstrap:"
+          Test-Path ./deploy/lib/bootstrap
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
