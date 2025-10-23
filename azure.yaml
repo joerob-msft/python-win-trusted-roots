@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: ssl-cert-tester
+metadata:
+  template: ssl-cert-tester@0.0.1-beta
+
+services:
+  web:
+    project: ./SslCertTester
+    language: csharp
+    host: appservice
+    hooks:
+      postdeploy:
+        windows:
+          shell: pwsh
+          run: |
+            Write-Host "Deploying WebJob to App Service..."
+            Compress-Archive -Path "./WebJobs/SslTester/*" -DestinationPath "./webjob.zip" -Force
+            az webapp deployment source config-zip --resource-group $env:AZURE_RESOURCE_GROUP --name $env:WEBAPP_NAME --src "./webjob.zip"
+            Write-Host "WebJob deployed successfully"
+        posix:
+          shell: sh
+          run: |
+            echo "Deploying WebJob to App Service..."
+            cd WebJobs/SslTester && zip -r ../../webjob.zip * && cd ../..
+            az webapp deployment source config-zip --resource-group $AZURE_RESOURCE_GROUP --name $WEBAPP_NAME --src webjob.zip
+            echo "WebJob deployed successfully"

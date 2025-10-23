@@ -1,0 +1,406 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "SSL Certificate Tester";
+}
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-lg-10 mx-auto">
+            <h1 class="display-4 mb-4 text-center">
+                <i class="bi bi-shield-lock"></i> SSL Certificate Tester
+            </h1>
+            <p class="lead text-center mb-5">Test SSL certificate validation and Windows Trusted Root Certificate Store behavior</p>
+
+            <!-- Documentation Link Alert -->
+            <div class="alert alert-info alert-dismissible fade show" role="alert">
+                <h5 class="alert-heading">
+                    <i class="bi bi-book"></i> New to this tool?
+                </h5>
+                <p class="mb-0">
+                    Check out the <a href="/Documentation" class="alert-link fw-bold">Documentation Page</a> for code examples, 
+                    setup instructions, and a detailed comparison of OpenSSL vs Windows CryptoAPI approaches.
+                </p>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+
+            <!-- URL Input Section -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-globe"></i> Target URL
+                    </h5>
+                    <div class="mb-3">
+                        <label for="targetUrl" class="form-label">Enter the HTTPS URL to test:</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="targetUrl" 
+                               value="www.ssl.com" 
+                               placeholder="www.ssl.com">
+                        <div class="form-text">Default: www.ssl.com (SSL.com certificate)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Certificate Information Section -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-file-earmark-lock"></i> Certificate Information
+                    </h5>
+                    <p class="text-muted small">Note: We cannot automatically retrieve certificate info as this would trigger the cert installation we're testing.</p>
+                    <button class="btn btn-primary mb-3" onclick="getCertificateInfo()">
+                        <i class="bi bi-info-circle"></i> Show Certificate Lookup Options
+                    </button>
+                    <div id="certInfo" class="alert alert-info d-none"></div>
+                    <div id="certDetails" class="mt-3"></div>
+                </div>
+            </div>
+
+            <!-- Windows Certificate Store Check Section -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-windows"></i> Windows Trusted Root Certificate Store
+                    </h5>
+                    <p class="card-text">Check if the root certificate is installed in the Windows trusted root store on the server.</p>
+                    <button class="btn btn-warning" onclick="checkCertificateStore()" id="checkCertBtn">
+                        <i class="bi bi-check-circle"></i> Check Certificate Store
+                    </button>
+                    <div id="certStoreResult" class="mt-3"></div>
+                </div>
+            </div>
+
+            <!-- WebJob Test Section -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-terminal"></i> Python WebJob Tests
+                    </h5>
+                    <p class="card-text">Run Python scripts to test SSL connection behavior:</p>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6 class="card-subtitle mb-2">Test 1: OpenSSL (ssl library)</h6>
+                                    <p class="small text-muted">Uses Python's ssl library (OpenSSL). Should NOT trigger automatic certificate installation.</p>
+                                    <button class="btn btn-danger btn-sm" onclick="runWebJob('ssl')" id="sslJobBtn">
+                                        <i class="bi bi-play-circle"></i> Run OpenSSL Test
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6 class="card-subtitle mb-2">Test 2: WinCertStore (requests library)</h6>
+                                    <p class="small text-muted">Uses requests with WinCertStore. WILL trigger automatic certificate installation via Windows CryptoAPI.</p>
+                                    <button class="btn btn-success btn-sm" onclick="runWebJob('requests')" id="requestsJobBtn">
+                                        <i class="bi bi-play-circle"></i> Run Requests Test
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="webJobResult" class="mt-3"></div>
+                </div>
+            </div>
+
+            <!-- Post-Test Check Section -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-arrow-repeat"></i> Post-Test Verification
+                    </h5>
+                    <p class="card-text">After running a test, check again to see if the certificate was installed:</p>
+                    <button class="btn btn-info" onclick="checkCertificateStore()" id="recheckCertBtn">
+                        <i class="bi bi-arrow-clockwise"></i> Re-check Certificate Store
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentThumbprint = '';
+
+    async function getCertificateInfo() {
+        const url = document.getElementById('targetUrl').value.trim();
+        const certInfo = document.getElementById('certInfo');
+        const certDetails = document.getElementById('certDetails');
+        
+        if (!url) {
+            certInfo.classList.remove('d-none');
+            certInfo.className = 'alert alert-warning';
+            certInfo.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Please enter a URL';
+            return;
+        }
+        
+        certInfo.classList.remove('d-none');
+        certInfo.className = 'alert alert-info';
+        certInfo.innerHTML = `
+            <strong><i class="bi bi-info-circle"></i> Certificate Information Lookup</strong><br>
+            <p class="mb-2">To avoid triggering automatic certificate installation, we cannot make a server-side connection to retrieve the certificate.</p>
+            <p class="mb-2"><strong>Option 1: Manual Browser Inspection</strong></p>
+            <ol class="mb-2">
+                <li>Open <a href="https://${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a> in a new tab</li>
+                <li>Click the padlock icon in the address bar</li>
+                <li>Click "Connection is secure" → "Certificate is valid"</li>
+                <li>View the certificate chain and find the root certificate</li>
+                <li>Copy the thumbprint/fingerprint</li>
+            </ol>
+            <div class="mt-3">
+                <label for="manualThumbprint" class="form-label"><strong>Option 2: Enter thumbprint manually:</strong></label>
+                <input type="text" class="form-control mb-2" id="manualThumbprint" 
+                       placeholder="Enter thumbprint (e.g., 25 76 40 17 ...)"
+                       onchange="currentThumbprint = this.value">
+            </div>
+            <div class="mt-2">
+                <label class="form-label"><strong>Option 3: Search by known certificate authority:</strong></label><br>
+                <button class="btn btn-sm btn-outline-primary" onclick="searchByKnownCA('${escapeHtml(url)}')">
+                    <i class="bi bi-search"></i> Search by CA Name
+                </button>
+            </div>
+        `;
+        
+        // Provide known CA information for common sites
+        let knownInfo = '';
+        const lowerUrl = url.toLowerCase();
+        if (lowerUrl.includes('ssl.com')) {
+            knownInfo = `
+                <div class="alert alert-info mt-3">
+                    <strong><i class="bi bi-info-circle"></i> Known Information for SSL.com</strong><br>
+                    SSL.com typically uses certificates issued by "SSL.com" certificate authorities.<br>
+                    Common root CAs: "SSL.com Root Certification Authority RSA", "SSL.com EV Root Certification Authority RSA R2"<br>
+                    <button class="btn btn-sm btn-primary mt-2" onclick="checkBySubject('SSL.com')">
+                        <i class="bi bi-search"></i> Check for SSL.com Root Certificates
+                    </button>
+                </div>
+            `;
+        } else if (lowerUrl.includes('microsoft.com') || lowerUrl.includes('azure.com')) {
+            knownInfo = `
+                <div class="alert alert-info mt-3">
+                    <strong><i class="bi bi-info-circle"></i> Known Information for Microsoft</strong><br>
+                    Microsoft sites typically use certificates from DigiCert or Microsoft IT.<br>
+                    <button class="btn btn-sm btn-primary mt-2" onclick="checkBySubject('DigiCert')">
+                        <i class="bi bi-search"></i> Check for DigiCert Root Certificates
+                    </button>
+                </div>
+            `;
+        }
+        
+        certDetails.innerHTML = knownInfo;
+    }
+
+    function searchByKnownCA(url) {
+        const lowerUrl = url.toLowerCase();
+        let caName = 'SSL.com';
+        
+        if (lowerUrl.includes('ssl.com')) {
+            caName = 'SSL.com';
+        } else if (lowerUrl.includes('microsoft.com') || lowerUrl.includes('azure.com')) {
+            caName = 'DigiCert';
+        } else if (lowerUrl.includes('google.com')) {
+            caName = 'Google Trust Services';
+        } else if (lowerUrl.includes('amazon.com')) {
+            caName = 'Amazon';
+        } else {
+            // Try to extract domain for generic search
+            const domain = url.split('.').slice(-2).join('.');
+            caName = domain;
+        }
+        
+        checkBySubject(caName);
+    }
+
+    async function checkCertificateStore() {
+        const certStoreResult = document.getElementById('certStoreResult');
+        const thumbprint = document.getElementById('manualThumbprint')?.value.trim() || currentThumbprint;
+
+        if (!thumbprint) {
+            certStoreResult.innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i> Please enter a certificate thumbprint or search by CA name.
+                </div>
+                <button class="btn btn-secondary btn-sm" onclick="checkBySubject('SSL.com')">
+                    <i class="bi bi-search"></i> Search by Subject (SSL.com)
+                </button>
+            `;
+            return;
+        }
+
+        certStoreResult.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> Checking certificate store...</div>';
+
+        try {
+            const response = await fetch(`/api/Certificate/check/${encodeURIComponent(thumbprint)}`);
+            const result = await response.json();
+
+            if (result.isInstalled) {
+                certStoreResult.innerHTML = `
+                    <div class="alert alert-success">
+                        <strong><i class="bi bi-check-circle"></i> Certificate IS Installed</strong><br>
+                        <strong>Subject:</strong> ${result.subject || 'N/A'}<br>
+                        <strong>Issuer:</strong> ${result.issuer || 'N/A'}<br>
+                        <strong>Thumbprint:</strong> ${result.thumbprint || 'N/A'}<br>
+                        <strong>Expires:</strong> ${result.notAfter ? new Date(result.notAfter).toLocaleDateString() : 'N/A'}<br>
+                        <small class="text-muted">${result.message}</small>
+                    </div>
+                `;
+            } else {
+                certStoreResult.innerHTML = `
+                    <div class="alert alert-danger">
+                        <strong><i class="bi bi-x-circle"></i> Certificate NOT Installed</strong><br>
+                        <small class="text-muted">${result.message}</small>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            certStoreResult.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle"></i> Error checking certificate: ${error.message}
+                </div>
+            `;
+        }
+    }
+
+    async function checkBySubject() {
+        const certStoreResult = document.getElementById('certStoreResult');
+        const subject = 'SSL.com'; // Search for SSL.com certificates
+
+        certStoreResult.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> Searching for SSL.com certificates...</div>';
+
+        try {
+            const response = await fetch(`/api/Certificate/check-subject/${encodeURIComponent(subject)}`);
+            const result = await response.json();
+
+            if (result.isInstalled) {
+                currentThumbprint = result.thumbprint;
+                if (document.getElementById('manualThumbprint')) {
+                    document.getElementById('manualThumbprint').value = result.thumbprint;
+                }
+                
+                certStoreResult.innerHTML = `
+                    <div class="alert alert-success">
+                        <strong><i class="bi bi-check-circle"></i> SSL.com Certificate IS Installed</strong><br>
+                        <strong>Subject:</strong> ${result.subject || 'N/A'}<br>
+                        <strong>Issuer:</strong> ${result.issuer || 'N/A'}<br>
+                        <strong>Thumbprint:</strong> ${result.thumbprint || 'N/A'}<br>
+                        <strong>Expires:</strong> ${result.notAfter ? new Date(result.notAfter).toLocaleDateString() : 'N/A'}<br>
+                        <small class="text-muted">${result.message}</small>
+                    </div>
+                `;
+            } else {
+                certStoreResult.innerHTML = `
+                    <div class="alert alert-danger">
+                        <strong><i class="bi bi-x-circle"></i> SSL.com Certificate NOT Installed</strong><br>
+                        <small class="text-muted">${result.message}</small>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            certStoreResult.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle"></i> Error checking certificate: ${error.message}
+                </div>
+            `;
+        }
+    }
+
+    async function runWebJob(jobType) {
+        const url = document.getElementById('targetUrl').value.trim();
+        const webJobResult = document.getElementById('webJobResult');
+        const btnId = jobType === 'ssl' ? 'sslJobBtn' : 'requestsJobBtn';
+        const btn = document.getElementById(btnId);
+        
+        if (!url) {
+            webJobResult.innerHTML = '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Please enter a URL</div>';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Running...';
+        webJobResult.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> Executing Python WebJob...</div>';
+
+        try {
+            const response = await fetch('/api/WebJob/run', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    url: url,
+                    jobType: jobType
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                webJobResult.innerHTML = `
+                    <div class="alert alert-success">
+                        <strong><i class="bi bi-check-circle"></i> WebJob Completed Successfully (${result.jobType})</strong><br>
+                        <strong>Output:</strong>
+                        <pre class="mt-2 mb-0 bg-light p-2 border rounded">${escapeHtml(result.output)}</pre>
+                    </div>
+                `;
+            } else {
+                webJobResult.innerHTML = `
+                    <div class="alert alert-danger">
+                        <strong><i class="bi bi-x-circle"></i> WebJob Failed (${result.jobType})</strong><br>
+                        <strong>Output:</strong>
+                        <pre class="mt-2 mb-2 bg-light p-2 border rounded">${escapeHtml(result.output)}</pre>
+                        <strong>Error:</strong>
+                        <pre class="mt-2 mb-0 bg-light p-2 border rounded">${escapeHtml(result.error)}</pre>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            webJobResult.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle"></i> Error running WebJob: ${error.message}
+                </div>
+            `;
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = jobType === 'ssl' 
+                ? '<i class="bi bi-play-circle"></i> Run OpenSSL Test'
+                : '<i class="bi bi-play-circle"></i> Run Requests Test';
+        }
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+</script>
+
+<style>
+    .card {
+        border: none;
+        transition: transform 0.2s;
+    }
+    
+    .card:hover {
+        transform: translateY(-2px);
+    }
+    
+    .btn {
+        transition: all 0.2s;
+    }
+    
+    .btn:hover {
+        transform: scale(1.05);
+    }
+    
+    pre {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        max-height: 300px;
+        overflow-y: auto;
+        font-size: 0.85rem;
+    }
+</style>

@@ -1,0 +1,461 @@
+@page
+@model SslCertTester.Pages.DocumentationModel
+@{
+    ViewData["Title"] = "Documentation";
+}
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">
+                <i class="bi bi-book"></i> SSL Certificate Testing Documentation
+            </h1>
+            
+            <!-- Quick Navigation -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Quick Navigation</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <ul class="list-unstyled">
+                                <li><a href="#overview">Overview</a></li>
+                                <li><a href="#code-comparison">Code Comparison</a></li>
+                                <li><a href="#custom-roots">Loading Custom Root Certificates</a></li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <ul class="list-unstyled">
+                                <li><a href="#when-to-use">When to Use Each Approach</a></li>
+                                <li><a href="#local-setup">Local Development Setup</a></li>
+                                <li><a href="#testing">Testing Guide</a></li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <ul class="list-unstyled">
+                                <li><a href="#troubleshooting">Troubleshooting</a></li>
+                                <li><a href="#resources">Additional Resources</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Overview Section -->
+            <section id="overview" class="mb-5">
+                <h2 class="border-bottom pb-2">Overview</h2>
+                <p class="lead">
+                    This application demonstrates the critical difference between OpenSSL certificate validation 
+                    and Windows CryptoAPI certificate validation when connecting to HTTPS endpoints.
+                </p>
+                
+                <div class="alert alert-info">
+                    <h5><i class="bi bi-info-circle"></i> Key Difference</h5>
+                    <p class="mb-0">
+                        <strong>OpenSSL (ssl library):</strong> Does NOT automatically download and install root certificates from the Windows Trusted Root Program.<br>
+                        <strong>Windows CryptoAPI (requests + wincertstore):</strong> DOES automatically download and install missing root certificates.
+                    </p>
+                </div>
+            </section>
+
+            <!-- Code Comparison Section -->
+            <section id="code-comparison" class="mb-5">
+                <h2 class="border-bottom pb-2">Code Comparison: OpenSSL vs Windows CryptoAPI</h2>
+                
+                <div class="table-responsive mb-4">
+                    <table class="table table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Aspect</th>
+                                <th>OpenSSL (ssl library)</th>
+                                <th>Windows CryptoAPI (requests)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Certificate Store</strong></td>
+                                <td>Uses OpenSSL's CA bundle</td>
+                                <td>Uses Windows Certificate Store</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Auto-Install Behavior</strong></td>
+                                <td>❌ Does NOT auto-install</td>
+                                <td>✅ DOES auto-install from Trusted Root Program</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Python Libraries</strong></td>
+                                <td><code>ssl</code>, <code>socket</code> (built-in)</td>
+                                <td><code>requests</code>, <code>wincertstore</code></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Connection Failure</strong></td>
+                                <td>Fails if cert not in OpenSSL bundle</td>
+                                <td>Succeeds (downloads cert automatically)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3>OpenSSL Approach (No Auto-Install)</h3>
+                <pre class="bg-light p-3 rounded"><code>import ssl
+import socket
+import sys
+
+def test_ssl_connection(hostname):
+    # Create SSL context with default settings
+    context = ssl.create_default_context()
+    
+    try:
+        # Create socket and wrap with SSL
+        with socket.create_connection((hostname, 443), timeout=10) as sock:
+            with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                cert = ssock.getpeercert()
+                print(f"[OK] Successfully connected to {hostname}")
+                print(f"[OK] Certificate subject: {dict(x[0] for x in cert['subject'])}")
+                return True
+    except ssl.SSLError as e:
+        print(f"[ERROR] SSL Error: {e}")
+        return False
+    except Exception as e:
+        print(f"[ERROR] Connection failed: {e}")
+        return False
+
+if __name__ == "__main__":
+    hostname = sys.argv[1] if len(sys.argv) > 1 else "www.ssl.com"
+    test_ssl_connection(hostname)</code></pre>
+
+                <div class="alert alert-success mt-3">
+                    <h5><i class="bi bi-info-circle"></i> Loading Custom Trusted Root Certificates</h5>
+                    <p>With OpenSSL, you have full control over which certificates to trust. You can load your own trusted root certificates from a PEM file:</p>
+                    <pre class="bg-white p-2 rounded mb-2"><code>import ssl
+import socket
+
+def test_with_custom_roots(hostname, pem_file):
+    # Create SSL context
+    context = ssl.create_default_context()
+    
+    # Load custom trusted root certificates from PEM file
+    # This gives you complete control over which CAs to trust
+    context.load_verify_locations(cafile=pem_file)
+    
+    # Optionally, load from a directory of PEM files
+    # context.load_verify_locations(capath="/path/to/ca/certificates/")
+    
+    # Or disable default CAs and only trust your custom roots
+    # context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    # context.load_verify_locations(cafile=pem_file)
+    
+    with socket.create_connection((hostname, 443), timeout=10) as sock:
+        with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+            print(f"Connected using custom CA bundle: {pem_file}")
+            return ssock.getpeercert()
+
+# Example usage:
+# cert = test_with_custom_roots("www.example.com", "my-trusted-roots.pem")</code></pre>
+                    <p class="mb-1"><strong>Benefits of loading custom roots:</strong></p>
+                    <ul class="mb-0">
+                        <li>Precise control over which Certificate Authorities to trust</li>
+                        <li>Can add private/internal CA certificates</li>
+                        <li>Can restrict trust to specific CAs for security</li>
+                        <li>Prevents reliance on system certificate stores</li>
+                        <li>Ensures consistent behavior across different environments</li>
+                    </ul>
+                </div>
+
+                <h3 class="mt-4">Windows CryptoAPI Approach (Auto-Install)</h3>
+                <pre class="bg-light p-3 rounded"><code>import requests
+import sys
+
+def test_requests_connection(hostname):
+    url = f"https://{hostname}"
+    
+    try:
+        # requests library uses Windows CryptoAPI via wincertstore
+        # This WILL trigger automatic certificate installation
+        response = requests.get(url, timeout=10)
+        print(f"[OK] Successfully connected to {hostname}")
+        print(f"[OK] Status code: {response.status_code}")
+        print(f"[OK] Certificate auto-install was triggered")
+        return True
+    except requests.exceptions.SSLError as e:
+        print(f"[ERROR] SSL Error: {e}")
+        return False
+    except Exception as e:
+        print(f"[ERROR] Connection failed: {e}")
+        return False
+
+if __name__ == "__main__":
+    hostname = sys.argv[1] if len(sys.argv) > 1 else "www.ssl.com"
+    test_requests_connection(hostname)</code></pre>
+            </section>
+
+            <!-- Custom Root Certificates Section -->
+            <section id="custom-roots" class="mb-5">
+                <h2 class="border-bottom pb-2">Loading Custom Root Certificates</h2>
+                
+                <p class="lead">
+                    One of the key advantages of using OpenSSL is the ability to specify exactly which root certificates to trust.
+                </p>
+
+                <h3>Method 1: Load from a PEM File</h3>
+                <pre class="bg-light p-3 rounded"><code>import ssl
+import socket
+
+# Create SSL context
+context = ssl.create_default_context()
+
+# Load your custom trusted root certificates
+# The PEM file can contain one or more CA certificates
+context.load_verify_locations(cafile="my-trusted-roots.pem")
+
+# Now connect using your custom trust store
+with socket.create_connection(("www.example.com", 443)) as sock:
+    with context.wrap_socket(sock, server_hostname="www.example.com") as ssock:
+        print("Connected successfully!")
+        print(ssock.getpeercert())</code></pre>
+
+                <h3 class="mt-4">Method 2: Load from a Directory</h3>
+                <pre class="bg-light p-3 rounded"><code># Load all PEM files from a directory
+context.load_verify_locations(capath="/path/to/ca/certificates/")</code></pre>
+
+                <h3 class="mt-4">Method 3: Use ONLY Custom Roots (No System CAs)</h3>
+                <pre class="bg-light p-3 rounded"><code>import ssl
+import socket
+
+# Create a fresh context WITHOUT loading default system CAs
+context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+# Enable hostname checking
+context.check_hostname = True
+context.verify_mode = ssl.CERT_REQUIRED
+
+# Load ONLY your custom trusted roots
+context.load_verify_locations(cafile="my-trusted-roots.pem")
+
+# This will ONLY trust certificates signed by CAs in your PEM file
+with socket.create_connection(("internal-server.company.local", 443)) as sock:
+    with context.wrap_socket(sock, server_hostname="internal-server.company.local") as ssock:
+        print("Connected to internal server with custom CA!")</code></pre>
+
+                <h3 class="mt-4">Creating a PEM File with Your Root Certificates</h3>
+                <p>A PEM file is simply a text file containing one or more certificates in PEM format:</p>
+                <pre class="bg-light p-3 rounded"><code>-----BEGIN CERTIFICATE-----
+MIIDdzCCAl+gAwIBAgIEAgAAuTANBgkqhkiG9w0BAQUFADBaMQswCQYDVQQGEwJJ
+[... certificate data ...]
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIIEMjCCAxqgAwIBAgIBATANBgkqhkiG9w0BAQUFADB7MQswCQYDVQQGEwJHQjEb
+[... another certificate ...]
+-----END CERTIFICATE-----</code></pre>
+
+                <div class="alert alert-warning mt-3">
+                    <h5><i class="bi bi-exclamation-triangle"></i> Important Notes</h5>
+                    <ul class="mb-0">
+                        <li>The PEM file must contain the <strong>root CA certificate</strong>, not the server certificate</li>
+                        <li>You can export root certificates from Windows Certificate Store using PowerShell or certmgr.msc</li>
+                        <li>Multiple certificates can be concatenated in a single PEM file</li>
+                        <li>Make sure the PEM file is readable and in the correct format</li>
+                    </ul>
+                </div>
+
+                <h3 class="mt-4">Exporting a Root Certificate from Windows to PEM</h3>
+                <pre class="bg-light p-3 rounded"><code># PowerShell: Export a root certificate to PEM format
+$cert = Get-ChildItem -Path Cert:\LocalMachine\Root | Where-Object {$_.Subject -like "*SSL.com*"} | Select-Object -First 1
+$pemBytes = @@(
+    '-----BEGIN CERTIFICATE-----'
+    [System.Convert]::ToBase64String($cert.RawData, 'InsertLineBreaks')
+    '-----END CERTIFICATE-----'
+)
+$pemBytes | Out-File -FilePath "ssl-com-root.pem" -Encoding ASCII</code></pre>
+            </section>
+
+            <!-- When to Use Section -->
+            <section id="when-to-use" class="mb-5">
+                <h2 class="border-bottom pb-2">When to Use Each Approach</h2>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card h-100 border-success">
+                            <div class="card-header bg-success text-white">
+                                <h5 class="mb-0">Use OpenSSL (ssl library)</h5>
+                            </div>
+                            <div class="card-body">
+                                <ul>
+                                    <li>Testing certificate validation behavior</li>
+                                    <li>Preventing automatic certificate installation</li>
+                                    <li>Cross-platform compatibility needed</li>
+                                    <li>Fine-grained SSL/TLS control required</li>
+                                    <li>Security auditing and compliance</li>
+                                    <li><strong>Loading custom/private CA certificates</strong></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100 border-primary">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="mb-0">Use Windows CryptoAPI (requests)</h5>
+                            </div>
+                            <div class="card-body">
+                                <ul>
+                                    <li>Production web applications</li>
+                                    <li>Automatic certificate management desired</li>
+                                    <li>Windows-only deployment</li>
+                                    <li>Integration with Windows security features</li>
+                                    <li>Enterprise environments with managed certificates</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Local Setup Section -->
+            <section id="local-setup" class="mb-5">
+                <h2 class="border-bottom pb-2">Local Development Setup</h2>
+                
+                <h3>Prerequisites</h3>
+                <ul>
+                    <li><a href="https://dotnet.microsoft.com/download/dotnet/8.0" target="_blank">.NET 8 SDK</a></li>
+                    <li><a href="https://www.python.org/downloads/" target="_blank">Python 3.9 or higher</a></li>
+                    <li>Windows OS (for certificate store testing)</li>
+                </ul>
+
+                <h3>Installation Steps</h3>
+                <ol>
+                    <li>
+                        <strong>Install Python Dependencies</strong>
+                        <pre class="bg-light p-3 rounded"><code>cd WebJobs\SslTester
+pip install -r requirements.txt</code></pre>
+                    </li>
+                    <li>
+                        <strong>Copy WebJob Scripts</strong>
+                        <pre class="bg-light p-3 rounded"><code>Copy-Item -Path "WebJobs\SslTester\*" -Destination "SslCertTester\wwwroot\App_Data\jobs\continuous\SslTester\" -Recurse -Force</code></pre>
+                    </li>
+                    <li>
+                        <strong>Run the Application</strong>
+                        <pre class="bg-light p-3 rounded"><code>cd SslCertTester
+dotnet run</code></pre>
+                    </li>
+                    <li>
+                        <strong>Open in Browser</strong><br>
+                        Navigate to <code>http://localhost:5257</code> (check console for exact port)
+                    </li>
+                </ol>
+            </section>
+
+            <!-- Testing Section -->
+            <section id="testing" class="mb-5">
+                <h2 class="border-bottom pb-2">Testing Guide</h2>
+                
+                <h3>Test Through Web UI</h3>
+                <ol>
+                    <li>Click <strong>"Check for SSL.com Root Certificates"</strong> to verify initial state</li>
+                    <li>Click <strong>"Run OpenSSL Test"</strong> (should fail if cert not installed)</li>
+                    <li>Check certificate store again (should still not be installed)</li>
+                    <li>Click <strong>"Run Requests Test"</strong> (triggers auto-install)</li>
+                    <li>Check certificate store one more time (should now be installed)</li>
+                </ol>
+
+                <h3>Test via Command Line</h3>
+                <pre class="bg-light p-3 rounded"><code>cd WebJobs\SslTester
+
+# OpenSSL test (no auto-install)
+python ssl_test.py www.ssl.com
+
+# Requests test (triggers auto-install)
+python requests_test.py www.ssl.com</code></pre>
+
+                <h3>Verify Certificate Installation</h3>
+                <pre class="bg-light p-3 rounded"><code># PowerShell command to check certificate store
+Get-ChildItem -Path Cert:\LocalMachine\Root | Where-Object {$_.Subject -like "*SSL.com*"}</code></pre>
+            </section>
+
+            <!-- Troubleshooting Section -->
+            <section id="troubleshooting" class="mb-5">
+                <h2 class="border-bottom pb-2">Troubleshooting</h2>
+                
+                <div class="accordion" id="troubleshootingAccordion">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#port-issue">
+                                Port Already in Use
+                            </button>
+                        </h2>
+                        <div id="port-issue" class="accordion-collapse collapse show" data-bs-parent="#troubleshootingAccordion">
+                            <div class="accordion-body">
+                                <pre class="bg-light p-2 rounded"><code># Kill existing dotnet process
+Get-Process -Name "dotnet" | Stop-Process -Force
+
+# Or specify different port
+dotnet run --urls "http://localhost:5000"</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#python-issue">
+                                Python Not Found
+                            </button>
+                        </h2>
+                        <div id="python-issue" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                            <div class="accordion-body">
+                                <p>Ensure Python is in your PATH:</p>
+                                <pre class="bg-light p-2 rounded"><code>python --version
+# Should show Python 3.9 or higher</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#webjob-issue">
+                                WebJob Scripts Not Found
+                            </button>
+                        </h2>
+                        <div id="webjob-issue" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                            <div class="accordion-body">
+                                <p>Verify the scripts were copied:</p>
+                                <pre class="bg-light p-2 rounded"><code>Test-Path "SslCertTester\wwwroot\App_Data\jobs\continuous\SslTester\ssl_test.py"
+# Should return True</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#admin-issue">
+                                Certificate Check Requires Administrator
+                            </button>
+                        </h2>
+                        <div id="admin-issue" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                            <div class="accordion-body">
+                                <p>To check the LocalMachine certificate store, run PowerShell as Administrator:</p>
+                                <pre class="bg-light p-2 rounded"><code>Get-ChildItem -Path Cert:\LocalMachine\Root</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Additional Resources -->
+            <section id="resources" class="mb-5">
+                <h2 class="border-bottom pb-2">Additional Resources</h2>
+                <ul>
+                    <li><a href="https://github.com/joerob-msft/python-win-trusted-roots" target="_blank">GitHub Repository</a></li>
+                    <li><a href="https://docs.python.org/3/library/ssl.html" target="_blank">Python SSL Library Documentation</a></li>
+                    <li><a href="https://requests.readthedocs.io/" target="_blank">Requests Library Documentation</a></li>
+                    <li><a href="https://learn.microsoft.com/en-us/windows/win32/seccrypto/cryptography-portal" target="_blank">Windows CryptoAPI Documentation</a></li>
+                </ul>
+            </section>
+
+            <div class="text-center mt-5 mb-4">
+                <a href="/" class="btn btn-primary btn-lg">
+                    <i class="bi bi-house"></i> Back to SSL Tester
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
