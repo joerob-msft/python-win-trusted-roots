@@ -106,9 +106,19 @@ jobs:
 
       - name: Create deployment ZIP
         run: |
-          Write-Host "Creating deployment ZIP..."
+          Write-Host "Contents to be zipped:"
+          Get-ChildItem -Path ./app -Recurse -Depth 2 | Select-Object FullName
+          
+          Write-Host "`nCreating deployment ZIP..."
           Compress-Archive -Path ./app/* -DestinationPath ./deploy.zip -Force
-          Write-Host "ZIP created: deploy.zip"
+          
+          Write-Host "`nZIP created. Size:"
+          Get-Item ./deploy.zip | Select-Object Length
+          
+          Write-Host "`nExtracting ZIP to verify contents..."
+          Expand-Archive -Path ./deploy.zip -DestinationPath ./verify-zip -Force
+          Write-Host "Checking for lib folder in extracted ZIP:"
+          Test-Path ./verify-zip/lib/bootstrap
           
       - name: Deploy to Azure Web App via ZIP
         run: |
