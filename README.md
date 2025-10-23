@@ -271,6 +271,39 @@ The `requests_test.py` script uses the `requests` library with `wincertstore`, w
 
 **Expected Behavior**: Connection succeeds, and the certificate is automatically installed in the Windows trusted root store.
 
+## Post-Deployment Verification
+
+After deploying to Azure, verify that:
+
+1. **Site loads correctly**: Navigate to your App Service URL
+2. **Styles are applied**: The site should have full Bootstrap styling with proper layout and colors
+3. **Static files load**: Open browser developer tools (F12) → Network tab and check for any 404 errors on CSS/JS files
+4. **WebJobs are present**: Azure Portal → Your App Service → WebJobs section
+
+### Troubleshooting: Styles Not Loading
+
+If the deployed site appears unstyled (plain HTML without Bootstrap):
+
+**✅ Already configured in this project:**
+- `web.config` - Configures IIS/Azure App Service to serve static files correctly
+- `.csproj` - Explicitly includes `wwwroot/**/*` in publish output
+- `Program.cs` - Has `app.UseStaticFiles()` middleware configured
+
+**Common fixes:**
+1. **Restart the App Service** - Sometimes needed after first deployment
+2. **Check deployment logs** - Azure Portal → App Service → Deployment Center → Logs
+3. **Verify publish includes wwwroot** - The publish folder should contain a `wwwroot` directory with all CSS/JS files
+4. **Check App Service logs** - Azure Portal → App Service → Log Stream
+5. **Re-deploy** - Sometimes a clean re-deployment resolves the issue
+
+**Manual verification:**
+```powershell
+# Check if static files were published
+ls ./SslCertTester/publish/wwwroot/lib/bootstrap/dist/css/
+
+# Should see bootstrap.min.css and other files
+```
+
 ## API Endpoints
 
 - `GET /api/Certificate/check/{thumbprint}` - Check if certificate exists by thumbprint
