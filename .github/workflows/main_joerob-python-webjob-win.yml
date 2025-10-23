@@ -126,8 +126,8 @@ jobs:
           $rg = az webapp list --query "[?name=='joerob-python-webjob-win'].resourceGroup" -o tsv
           Write-Host "Resource group: $rg"
           
-          Write-Host "Deploying ZIP to Azure..."
-          az webapp deployment source config-zip --resource-group $rg --name joerob-python-webjob-win --src ./deploy.zip
+          Write-Host "Deploying ZIP to Azure using az webapp deploy..."
+          az webapp deploy --resource-group $rg --name joerob-python-webjob-win --src-path ./deploy.zip --type zip --clean true --restart true
           Write-Host "Deployment completed"
       
       - name: Restart App Service
